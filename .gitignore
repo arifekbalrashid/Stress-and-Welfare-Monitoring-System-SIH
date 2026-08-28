@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+venv/
+
+# Environment
+.env
+.env.local
+.env.production
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Database
+*.db
+
+# ML artifacts
+ml/artifacts/*.pkl
+ml/artifacts/*.joblib
+ml/artifacts/*.json
+ml/artifacts/*.png
+!ml/configs/
+
+# ML training data
+ml/*.csv
+
+# Logs
+*.log
+
+# Alembic
+migrations/versions/__pycache__/
+
+# Notebook checkpoints
+.ipynb_checkpoints/
