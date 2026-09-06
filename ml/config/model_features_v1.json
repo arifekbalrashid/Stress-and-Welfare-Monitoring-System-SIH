@@ -1,0 +1,28 @@
+{
+  "model_version": "v1.0",
+  "features": [
+    "duty_hours",
+    "night_shifts",
+    "consecutive_duty_days",
+    "rest_hours",
+    "deployment_days",
+    "leave_gap_days",
+    "sleep_quality",
+    "workload_score",
+    "recovery_score",
+    "average_duty_hours_4w",
+    "workload_change_pct",
+    "recovery_change_pct",
+    "previous_risk_score"
+  ],
+  "target_column": "risk_level",
+  "target_classes": ["Low", "Moderate", "Elevated", "High"],
+  "score_column": "risk_score",
+  "score_range": [0, 100],
+  "score_buckets": {
+    "Low": [0, 30],
+    "Moderate": [31, 50],
+    "Elevated": [51, 75],
+    "High": [76, 100]
+  }
+}
