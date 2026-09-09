@@ -1,0 +1,350 @@
+import i18n from 'i18next';
+import { initReactI18next } from 'react-i18next';
+import LanguageDetector from 'i18next-browser-languagedetector';
+
+const resources = {
+  en: {
+    translation: {
+      nav: {
+        dashboard: "Dashboard",
+        checkin: "Wellness Check-in",
+        support: "Request Support",
+        cases: "Cases",
+        support_requests: "Support Requests",
+        unit_overview: "Unit Overview",
+        unit_roster: "Unit Roster",
+        personnel_units: "Personnel & Units",
+        data_import: "Data Import",
+        user_management: "User Management",
+        audit_logs: "Audit Logs",
+      },
+      account: {
+        profile: "Profile",
+        change_password: "Change password",
+        privacy_consent: "Privacy & Consent",
+        sign_out: "Sign out"
+      },
+      checkin: {
+        title: "Daily Wellness Check-in",
+        subtitle: "Your responses are confidential and help us better support your welfare.",
+        sleep_quality: "How would you rate your sleep quality last night?",
+        sleep_excellent: "Excellent",
+        sleep_good: "Good",
+        sleep_fair: "Fair",
+        sleep_poor: "Poor",
+        sleep_very_poor: "Very Poor",
+        workload: "How manageable was your workload today?",
+        workload_very_light: "Very Light",
+        workload_light: "Light",
+        workload_moderate: "Moderate",
+        workload_heavy: "Heavy",
+        workload_very_heavy: "Very Heavy",
+        recovery: "Do you feel fully recovered for your next duty?",
+        recovery_yes: "Yes, fully recovered",
+        recovery_mostly: "Mostly recovered",
+        recovery_somewhat: "Somewhat recovered",
+        recovery_barely: "Barely recovered",
+        recovery_no: "No, exhausted",
+        comments: "Any other comments or concerns? (Optional)",
+        submit: "Submit Check-in",
+        submitting: "Submitting...",
+        privacy_note: "Your responses have been recorded according to your privacy and consent settings."
+      },
+      dashboard: {
+        current_welfare: "Current welfare status",
+        recent_changes: "Recent changes",
+        welfare_trend: "Welfare trend",
+        factors: "Contributing factors to this prediction",
+        recommendations: "Recommendations"
+      },
+      consent: {
+        title: "Privacy & Consent",
+        subtitle: "Manage how your data is used for welfare assessment.",
+        required_data: "Required Data",
+        operational_data: "Operational Data",
+        operational_data_desc: "Duty hours, deployments, and leave info provided automatically by HR for baseline risk assessment.",
+        voluntary_data: "Voluntary Data",
+        wellness_checkins: "Wellness Check-ins",
+        wellness_checkins_desc: "Allow SAATHI to use your weekly wellness answers to improve support recommendations.",
+        unit_reporting: "Unit Reporting",
+        unit_reporting_desc: "Include your data in anonymized, unit-wide statistics (Commanders never see your individual answers).",
+        who_sees_what: "Who Sees What?",
+        you: "You",
+        everything: "Everything",
+        welfare_officer: "Welfare Officer",
+        wo_desc: "Only during active case reviews",
+        commander: "Commander",
+        cmd_desc: "Anonymized aggregates only",
+        admin: "Admin",
+        admin_desc: "Account management only",
+        recent_access: "Recent Access",
+        viewed_case: "Viewed your case"
+      }
+    }
+  },
+  hi: {
+    translation: {
+      nav: {
+        dashboard: "डैशबोर्ड",
+        checkin: "वेलनेस चेक-इन",
+        support: "सहायता का अनुरोध करें",
+        cases: "मामले",
+        support_requests: "सहायता अनुरोध",
+        unit_overview: "इकाई अवलोकन",
+        unit_roster: "इकाई रोस्टर",
+        personnel_units: "कार्मिक और इकाइयाँ",
+        data_import: "डेटा आयात",
+        user_management: "उपयोगकर्ता प्रबंधन",
+        audit_logs: "ऑडिट लॉग",
+      },
+      account: {
+        profile: "प्रोफ़ाइल",
+        change_password: "पासवर्ड बदलें",
+        privacy_consent: "गोपनीयता और सहमति",
+        sign_out: "साइन आउट"
+      },
+      checkin: {
+        title: "दैनिक वेलनेस चेक-इन",
+        subtitle: "आपकी प्रतिक्रियाएँ गोपनीय हैं और आपके कल्याण को बेहतर ढंग से समर्थन देने में हमारी सहायता करती हैं।",
+        sleep_quality: "पिछली रात आपकी नींद की गुणवत्ता कैसी रही?",
+        sleep_excellent: "बहुत बढ़िया",
+        sleep_good: "अच्छा",
+        sleep_fair: "सामान्य",
+        sleep_poor: "खराब",
+        sleep_very_poor: "बहुत खराब",
+        workload: "आज आपका काम का बोझ कैसा रहा?",
+        workload_very_light: "बहुत कम",
+        workload_light: "कम",
+        workload_moderate: "मध्यम",
+        workload_heavy: "भारी",
+        workload_very_heavy: "बहुत भारी",
+        recovery: "क्या आप अपनी अगली ड्यूटी के लिए पूरी तरह से ऊर्जावान महसूस करते हैं?",
+        recovery_yes: "हाँ, पूरी तरह ऊर्जावान",
+        recovery_mostly: "ज्यादातर ऊर्जावान",
+        recovery_somewhat: "थोड़ा बहुत",
+        recovery_barely: "मुश्किल से",
+        recovery_no: "नहीं, थका हुआ",
+        recovery_no: "नहीं, थका हुआ",
+        comments: "कोई अन्य टिप्पणी या चिंता? (वैकल्पिक)",
+        submit: "चेक-इन जमा करें",
+        submitting: "जमा हो रहा है...",
+        privacy_note: "आपकी प्रतिक्रियाएँ आपकी गोपनीयता और सहमति सेटिंग्स के अनुसार दर्ज की गई हैं।",
+        energy_level: "आप अपने ऊर्जा स्तर का वर्णन कैसे करेंगे?",
+        wellbeing_score: "इस सप्ताह आप अपने समग्र स्वास्थ्य का मूल्यांकन कैसे करेंगे?",
+        very_low: "बहुत कम",
+        very_good: "बहुत अच्छा",
+        very_difficult: "प्रबंधन करने में बहुत मुश्किल",
+        highly_manageable: "अत्यधिक प्रबंधनीय",
+        very_poorly: "बहुत खराब",
+        very_well: "बहुत अच्छी तरह से",
+        already_submitted: "इस सप्ताह चेक-इन पहले ही जमा किया जा चुका है",
+        next_available: "अगला चेक-इन उपलब्ध है",
+        return_to_dashboard: "डैशबोर्ड पर वापस जाएं",
+        answer_all: "कृपया सबमिट करने से पहले सभी पांच प्रश्नों के उत्तर दें।",
+        helper_sleep: "इस सप्ताह अपने सामान्य अनुभव के बारे में सोचें।",
+        answered: "उत्तर दिया गया"
+      },
+      dashboard: {
+        current_welfare: "वर्तमान कल्याण स्थिति",
+        recent_changes: "हाल के बदलाव",
+        welfare_trend: "कल्याण की प्रवृत्ति",
+        factors: "इस भविष्यवाणी में योगदान देने वाले कारक",
+        recommendations: "सिफारिशें"
+      },
+      consent: {
+        title: "गोपनीयता और सहमति",
+        subtitle: "प्रबंधित करें कि कल्याण मूल्यांकन के लिए आपके डेटा का उपयोग कैसे किया जाता है।",
+        required_data: "आवश्यक डेटा",
+        operational_data: "परिचालन डेटा",
+        operational_data_desc: "बेसलाइन जोखिम मूल्यांकन के लिए एचआर द्वारा स्वचालित रूप से प्रदान की गई ड्यूटी के घंटे, तैनाती और छुट्टी की जानकारी।",
+        voluntary_data: "स्वैच्छिक डेटा",
+        wellness_checkins: "वेलनेस चेक-इन",
+        wellness_checkins_desc: "SAATHI को समर्थन सिफारिशों को बेहतर बनाने के लिए आपके साप्ताहिक वेलनेस उत्तरों का उपयोग करने दें।",
+        unit_reporting: "इकाई रिपोर्टिंग",
+        unit_reporting_desc: "अपना डेटा अज्ञात, इकाई-व्यापी आंकड़ों में शामिल करें (कमांडरों को आपके व्यक्तिगत उत्तर कभी दिखाई नहीं देते)।",
+        who_sees_what: "कौन क्या देखता है?",
+        you: "आप",
+        everything: "सब कुछ",
+        welfare_officer: "कल्याण अधिकारी",
+        wo_desc: "केवल सक्रिय मामले की समीक्षा के दौरान",
+        commander: "कमांडर",
+        cmd_desc: "केवल अनाम समूह",
+        admin: "व्यवस्थापक",
+        admin_desc: "केवल खाता प्रबंधन",
+        recent_access: "हाल की पहुंच",
+        viewed_case: "आपका मामला देखा"
+      }
+    }
+  },
+  bn: {
+    translation: {
+      nav: {
+        dashboard: "ড্যাশবোর্ড",
+        checkin: "ওয়েলনেস চেক-ইন",
+        support: "সমর্থনের অনুরোধ করুন",
+        cases: "মামলা",
+        support_requests: "সমর্থনের অনুরোধ",
+        unit_overview: "ইউনিট ওভারভিউ",
+        unit_roster: "ইউনিট রোস্টার",
+        personnel_units: "কর্মী এবং ইউনিট",
+        data_import: "ডেটা আমদানি",
+        user_management: "ব্যবহারকারী ব্যবস্থাপনা",
+        audit_logs: "অডিট লগ",
+      },
+      account: {
+        profile: "প্রোফাইল",
+        change_password: "পাসওয়ার্ড পরিবর্তন করুন",
+        privacy_consent: "গোপনীয়তা এবং সম্মতি",
+        sign_out: "সাইন আউট"
+      },
+      checkin: {
+        title: "দৈনিক ওয়েলনেস চেক-ইন",
+        subtitle: "আপনার প্রতিক্রিয়াগুলি গোপনীয় এবং আমাদের আপনার কল্যাণকে আরও ভালভাবে সমর্থন করতে সহায়তা করে।",
+        sleep_quality: "গত রাতে আপনার ঘুমের মান কেমন ছিল?",
+        sleep_excellent: "চমৎকার",
+        sleep_good: "ভালো",
+        sleep_fair: "মোটামুটি",
+        sleep_poor: "খারাপ",
+        sleep_very_poor: "খুব খারাপ",
+        workload: "আজ আপনার কাজের চাপ কেমন ছিল?",
+        workload_very_light: "খুব হালকা",
+        workload_light: "হালকা",
+        workload_moderate: "মাঝারি",
+        workload_heavy: "ভারী",
+        workload_very_heavy: "খুব ভারী",
+        recovery: "আপনি কি আপনার পরবর্তী ডিউটির জন্য পুরোপুরি সুস্থ বোধ করছেন?",
+        recovery_yes: "হ্যাঁ, সম্পূর্ণ সুস্থ",
+        recovery_mostly: "বেশিরভাগ সুস্থ",
+        recovery_somewhat: "কিছুটা সুস্থ",
+        recovery_barely: "কষ্টেসৃষ্টে",
+        recovery_no: "না, ক্লান্ত",
+        comments: "অন্য কোন মন্তব্য বা উদ্বেগ? (ঐচ্ছিক)",
+        submit: "চেক-ইন জমা দিন",
+        submitting: "জমা দেওয়া হচ্ছে...",
+        privacy_note: "আপনার গোপনীয়তা এবং সম্মতি সেটিংস অনুযায়ী আপনার প্রতিক্রিয়া রেকর্ড করা হয়েছে।"
+      },
+      dashboard: {
+        current_welfare: "বর্তমান কল্যাণ অবস্থা",
+        recent_changes: "সাম্প্রতিক পরিবর্তন",
+        welfare_trend: "কল্যাণ প্রবণতা",
+        factors: "এই ভবিষ্যদ্বাণীতে অবদানকারী কারণগুলি",
+        recommendations: "সুপারিশ"
+      },
+      consent: {
+        title: "গোপনীয়তা এবং সম্মতি",
+        subtitle: "কল্যাণ মূল্যায়নের জন্য আপনার ডেটা কীভাবে ব্যবহৃত হয় তা পরিচালনা করুন।",
+        required_data: "প্রয়োজনীয় ডেটা",
+        operational_data: "অপারেশনাল ডেটা",
+        operational_data_desc: "বেসলাইন ঝুঁকি মূল্যায়নের জন্য এইচআর দ্বারা স্বয়ংক্রিয়ভাবে প্রদত্ত ডিউটি ​​আওয়ার, মোতায়েন এবং ছুটির তথ্য।",
+        voluntary_data: "স্বেচ্ছায় ডেটা",
+        wellness_checkins: "ওয়েলনেস চেক-ইন",
+        wellness_checkins_desc: "SAATHI-কে সমর্থন সুপারিশ উন্নত করতে আপনার সাপ্তাহিক ওয়েলনেস উত্তরগুলি ব্যবহার করার অনুমতি দিন।",
+        unit_reporting: "ইউনিট রিপোর্টিং",
+        unit_reporting_desc: "বেনামী, ইউনিট-ব্যাপী পরিসংখ্যানে আপনার ডেটা অন্তর্ভুক্ত করুন (কমান্ডাররা কখনই আপনার ব্যক্তিগত উত্তরগুলি দেখতে পান না)।",
+        who_sees_what: "কে কি দেখে?",
+        you: "আপনি",
+        everything: "সবকিছু",
+        welfare_officer: "কল্যাণ আধিকারিক",
+        wo_desc: "শুধুমাত্র সক্রিয় কেস পর্যালোচনার সময়",
+        commander: "কমান্ডার",
+        cmd_desc: "শুধুমাত্র বেনামী সমষ্টি",
+        admin: "অ্যাডমিন",
+        admin_desc: "শুধুমাত্র অ্যাকাউন্ট পরিচালনা",
+        recent_access: "সাম্প্রতিক অ্যাক্সেস",
+        viewed_case: "আপনার মামলা দেখেছেন"
+      }
+    }
+  },
+  pa: {
+    translation: {
+      nav: {
+        dashboard: "ਡੈਸ਼ਬੋਰਡ",
+        checkin: "ਵੈਲਨੈੱਸ ਚੈੱਕ-ਇਨ",
+        support: "ਸਹਾਇਤਾ ਲਈ ਬੇਨਤੀ ਕਰੋ",
+        cases: "ਕੇਸ",
+        support_requests: "ਸਹਾਇਤਾ ਬੇਨਤੀਆਂ",
+        unit_overview: "ਯੂਨਿਟ ਦੀ ਸੰਖੇਪ ਜਾਣਕਾਰੀ",
+        unit_roster: "ਯੂਨਿਟ ਰੋਸਟਰ",
+        personnel_units: "ਕਰਮਚਾਰੀ ਅਤੇ ਯੂਨਿਟ",
+        data_import: "ਡੇਟਾ ਆਯਾਤ",
+        user_management: "ਉਪਭੋਗਤਾ ਪ੍ਰਬੰਧਨ",
+        audit_logs: "ਆਡਿਟ ਲਾਗ",
+      },
+      account: {
+        profile: "ਪ੍ਰੋਫਾਈਲ",
+        change_password: "ਪਾਸਵਰਡ ਬਦਲੋ",
+        privacy_consent: "ਗੋਪਨੀਯਤਾ ਅਤੇ ਸਹਿਮਤੀ",
+        sign_out: "ਸਾਈਨ ਆਊਟ"
+      },
+      checkin: {
+        title: "ਰੋਜ਼ਾਨਾ ਵੈਲਨੈੱਸ ਚੈੱਕ-ਇਨ",
+        subtitle: "ਤੁਹਾਡੇ ਜਵਾਬ ਗੁਪਤ ਹਨ ਅਤੇ ਸਾਡੀ ਤੁਹਾਡੀ ਭਲਾਈ ਲਈ ਬਿਹਤਰ ਸਹਾਇਤਾ ਕਰਨ ਵਿੱਚ ਮਦਦ ਕਰਦੇ ਹਨ।",
+        sleep_quality: "ਪਿਛਲੀ ਰਾਤ ਤੁਹਾਡੀ ਨੀਂਦ ਦੀ ਗੁਣਵੱਤਾ ਕਿਵੇਂ ਸੀ?",
+        sleep_excellent: "ਬਹੁਤ ਵਧੀਆ",
+        sleep_good: "ਚੰਗੀ",
+        sleep_fair: "ਠੀਕ-ਠਾਕ",
+        sleep_poor: "ਮਾੜੀ",
+        sleep_very_poor: "ਬਹੁਤ ਮਾੜੀ",
+        workload: "ਅੱਜ ਤੁਹਾਡਾ ਕੰਮ ਦਾ ਬੋਝ ਕਿਵੇਂ ਸੀ?",
+        workload_very_light: "ਬਹੁਤ ਹਲਕਾ",
+        workload_light: "ਹਲਕਾ",
+        workload_moderate: "ਦਰਮਿਆਨਾ",
+        workload_heavy: "ਭਾਰੀ",
+        workload_very_heavy: "ਬਹੁਤ ਭਾਰੀ",
+        recovery: "ਕੀ ਤੁਸੀਂ ਆਪਣੀ ਅਗਲੀ ਡਿਊਟੀ ਲਈ ਪੂਰੀ ਤਰ੍ਹਾਂ ਤਿਆਰ ਮਹਿਸੂਸ ਕਰਦੇ ਹੋ?",
+        recovery_yes: "ਹਾਂ, ਪੂਰੀ ਤਰ੍ਹਾਂ ਤਿਆਰ",
+        recovery_mostly: "ਜ਼ਿਆਦਾਤਰ ਤਿਆਰ",
+        recovery_somewhat: "ਕੁਝ ਹੱਦ ਤੱਕ",
+        recovery_barely: "ਮੁਸ਼ਕਿਲ ਨਾਲ",
+        recovery_no: "ਨਹੀਂ, ਥੱਕਿਆ ਹੋਇਆ",
+        comments: "ਕੋਈ ਹੋਰ ਟਿੱਪਣੀ ਜਾਂ ਚਿੰਤਾ? (ਵਿਕਲਪਿਕ)",
+        submit: "ਚੈੱਕ-ਇਨ ਜਮ੍ਹਾਂ ਕਰੋ",
+        submitting: "ਜਮ੍ਹਾਂ ਕੀਤਾ ਜਾ ਰਿਹਾ ਹੈ...",
+        privacy_note: "ਤੁਹਾਡੇ ਜਵਾਬ ਤੁਹਾਡੀ ਗੋਪਨੀਯਤਾ ਅਤੇ ਸਹਿਮਤੀ ਸੈਟਿੰਗਾਂ ਦੇ ਅਨੁਸਾਰ ਦਰਜ ਕੀਤੇ ਗਏ ਹਨ।"
+      },
+      dashboard: {
+        current_welfare: "ਮੌਜੂਦਾ ਭਲਾਈ ਸਥਿਤੀ",
+        recent_changes: "ਹਾਲੀਆ ਤਬਦੀਲੀਆਂ",
+        welfare_trend: "ਭਲਾਈ ਦਾ ਰੁਝਾਨ",
+        factors: "ਇਸ ਭਵਿੱਖਬਾਣੀ ਵਿੱਚ ਯੋਗਦਾਨ ਪਾਉਣ ਵਾਲੇ ਕਾਰਕ",
+        recommendations: "ਸਿਫ਼ਾਰਿਸ਼ਾਂ"
+      },
+      consent: {
+        title: "ਗੋਪਨੀਯਤਾ ਅਤੇ ਸਹਿਮਤੀ",
+        subtitle: "ਪ੍ਰਬੰਧਿਤ ਕਰੋ ਕਿ ਭਲਾਈ ਮੁਲਾਂਕਣ ਲਈ ਤੁਹਾਡੇ ਡੇਟਾ ਦੀ ਵਰਤੋਂ ਕਿਵੇਂ ਕੀਤੀ ਜਾਂਦੀ ਹੈ।",
+        required_data: "ਲੋੜੀਂਦਾ ਡੇਟਾ",
+        operational_data: "ਸੰਚਾਲਨ ਡੇਟਾ",
+        operational_data_desc: "ਬੇਸਲਾਈਨ ਜੋਖਮ ਮੁਲਾਂਕਣ ਲਈ HR ਦੁਆਰਾ ਸਵੈਚਲਿਤ ਤੌਰ 'ਤੇ ਪ੍ਰਦਾਨ ਕੀਤੀ ਡਿਊਟੀ ਦੇ ਘੰਟੇ, ਤੈਨਾਤੀਆਂ, ਅਤੇ ਛੁੱਟੀ ਦੀ ਜਾਣਕਾਰੀ।",
+        voluntary_data: "ਸਵੈ-ਇੱਛਤ ਡੇਟਾ",
+        wellness_checkins: "ਵੈਲਨੈੱਸ ਚੈੱਕ-ਇਨ",
+        wellness_checkins_desc: "ਸਹਾਇਤਾ ਸਿਫ਼ਾਰਸ਼ਾਂ ਨੂੰ ਬਿਹਤਰ ਬਣਾਉਣ ਲਈ SAATHI ਨੂੰ ਤੁਹਾਡੇ ਹਫ਼ਤਾਵਾਰੀ ਵੈਲਨੈੱਸ ਜਵਾਬਾਂ ਦੀ ਵਰਤੋਂ ਕਰਨ ਦਿਓ।",
+        unit_reporting: "ਯੂਨਿਟ ਰਿਪੋਰਟਿੰਗ",
+        unit_reporting_desc: "ਆਪਣੇ ਡੇਟਾ ਨੂੰ ਅਗਿਆਤ, ਯੂਨਿਟ-ਵਿਆਪੀ ਅੰਕੜਿਆਂ ਵਿੱਚ ਸ਼ਾਮਲ ਕਰੋ (ਕਮਾਂਡਰਾਂ ਨੂੰ ਕਦੇ ਵੀ ਤੁਹਾਡੇ ਨਿੱਜੀ ਜਵਾਬ ਨਹੀਂ ਦਿਖਾਈ ਦਿੰਦੇ)।",
+        who_sees_what: "ਕੌਣ ਕੀ ਦੇਖਦਾ ਹੈ?",
+        you: "ਤੁਸੀਂ",
+        everything: "ਸਭ ਕੁਝ",
+        welfare_officer: "ਭਲਾਈ ਅਧਿਕਾਰੀ",
+        wo_desc: "ਸਿਰਫ਼ ਸਰਗਰਮ ਕੇਸ ਦੀ ਸਮੀਖਿਆ ਦੌਰਾਨ",
+        commander: "ਕਮਾਂਡਰ",
+        cmd_desc: "ਸਿਰਫ਼ ਅਗਿਆਤ ਸਮੂਹ",
+        admin: "ਪ੍ਰਬੰਧਕ",
+        admin_desc: "ਸਿਰਫ਼ ਖਾਤਾ ਪ੍ਰਬੰਧਨ",
+        recent_access: "ਹਾਲੀਆ ਪਹੁੰਚ",
+        viewed_case: "ਤੁਹਾਡਾ ਕੇਸ ਦੇਖਿਆ"
+      }
+    }
+  }
+};
+
+i18n
+  .use(LanguageDetector)
+  .use(initReactI18next)
+  .init({
+    resources,
+    fallbackLng: 'en',
+    interpolation: {
+      escapeValue: false, // not needed for react as it escapes by default
+    },
+  });
+
+export default i18n;
