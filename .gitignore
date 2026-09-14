@@ -30,6 +30,7 @@ ml/artifacts/*.pkl
 ml/artifacts/*.joblib
 ml/artifacts/*.json
 ml/artifacts/*.png
+ml/artifacts/*.txt
 !ml/configs/
 
 # ML training data
