@@ -4,10 +4,9 @@ Risk prediction — model output stored per personnel per prediction run.
 
 import enum
 from datetime import datetime
-from sqlalchemy import Integer, Float, String, Enum, Boolean, DateTime, ForeignKey, JSON
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from app.database.base import Base
+from typing import Optional, Any
+from beanie import Document, Indexed
+from pydantic import Field
 
 
 class RiskLevel(str, enum.Enum):
@@ -23,21 +22,16 @@ class RiskTrend(str, enum.Enum):
     DECREASING = "decreasing"
 
 
-class RiskPrediction(Base):
-    __tablename__ = "risk_predictions"
+class RiskPrediction(Document):
+    personnel_id: Indexed(Any)
+    risk_score: float  # 0–100
+    risk_level: Indexed(RiskLevel)
+    trend: RiskTrend
+    shap_factors: Optional[dict] = None  # top contributing factors
+    confidence: float = 1.0
+    model_version_id: Optional[Any] = None
+    has_wellness_data: bool = True
+    created_at: Indexed(datetime, index_type=None) = Field(default_factory=datetime.utcnow)
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    personnel_id: Mapped[int] = mapped_column(Integer, ForeignKey("personnel.id"), nullable=False, index=True)
-    risk_score: Mapped[float] = mapped_column(Float, nullable=False)  # 0–100
-    risk_level: Mapped[RiskLevel] = mapped_column(Enum(RiskLevel), nullable=False, index=True)
-    trend: Mapped[RiskTrend] = mapped_column(Enum(RiskTrend), nullable=False)
-    shap_factors: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # top contributing factors
-    confidence: Mapped[float] = mapped_column(Float, default=1.0)
-    model_version_id: Mapped[int] = mapped_column(Integer, ForeignKey("model_versions.id"), nullable=False)
-    has_wellness_data: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
-
-    # Relationships
-    personnel: Mapped["Personnel"] = relationship(back_populates="risk_predictions")
-    model_version: Mapped["ModelVersion"] = relationship(back_populates="predictions")
-    recommendations: Mapped[list["Recommendation"]] = relationship(back_populates="risk_prediction")
+    class Settings:
+        name = "risk_predictions"

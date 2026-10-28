@@ -4,10 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from google import genai
 from google.genai import types
-from sqlalchemy.orm import Session
 import edge_tts
 
-from app.database.connection import get_db
 from app.config import get_settings
 from app.auth.rbac import get_current_user
 from app.models.user import User
@@ -24,7 +22,7 @@ class ChatRequest(BaseModel):
     is_voice: bool = False
 
 @router.post("")
-async def chat_with_ai(request: ChatRequest, req: Request, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def chat_with_ai(request: ChatRequest, req: Request, current_user: User = Depends(get_current_user)):
     settings = get_settings()
     if not settings.GEMINI_API_KEY:
         raise HTTPException(status_code=500, detail="Gemini API key not configured")
@@ -32,7 +30,7 @@ async def chat_with_ai(request: ChatRequest, req: Request, current_user: User = 
     client = genai.Client(api_key=settings.GEMINI_API_KEY)
     
     # Fetch personnel for name
-    p = db.query(Personnel).filter(Personnel.user_id == current_user.id).first()
+    p = await Personnel.find_one(Personnel.user_id == current_user.id)
     user_name = f"{p.first_name} {p.last_name}" if p else current_user.username
 
     lang = req.headers.get("Accept-Language", "en").split(",")[0]
@@ -65,7 +63,7 @@ async def chat_with_ai(request: ChatRequest, req: Request, current_user: User = 
             history.append({"role": role, "parts": [{"text": msg.text}]})
 
         chat = client.chats.create(
-            model="gemini-3.5-flash",
+            model="gemini-2.5-flash",
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction
             ),

@@ -4,11 +4,9 @@ import csv
 import io
 from datetime import datetime, date
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
 
-from app.database.connection import get_db
 from app.auth.rbac import require_admin
 from app.auth.password import hash_password
 from app.models.user import User, UserRole
@@ -28,55 +26,89 @@ router = APIRouter()
 # ---- Users ----
 
 @router.get("/users")
-def list_users(page: int = 1, page_size: int = 20, current_user: User = Depends(require_admin), db: Session = Depends(get_db)):
-    total = db.query(User).count()
-    users = db.query(User).offset((page - 1) * page_size).limit(page_size).all()
+async def list_users(
+    page: int = 1,
+    page_size: int = 20,
+    current_user: User = Depends(require_admin),
+):
+    total = await User.find().count()
+    users = await User.find().skip((page - 1) * page_size).limit(page_size).to_list()
+    
+    units = await Unit.find().to_list()
+    unit_map = {u.id: u for u in units}
+
     return APIResponse(data={
         "items": [
             {
-                "id": u.id, "username": u.username, "email": u.email,
-                "role": u.role.value, "is_active": u.is_active,
-                "assigned_unit_id": u.assigned_unit_id,
-                "assigned_unit_name": u.assigned_unit.name if u.assigned_unit else None,
+                "id": str(u.id),
+                "username": u.username,
+                "email": u.email,
+                "role": u.role.value if hasattr(u.role, "value") else str(u.role),
+                "is_active": u.is_active,
+                "assigned_unit_id": str(u.assigned_unit_id) if u.assigned_unit_id else None,
+                "assigned_unit_name": unit_map[u.assigned_unit_id].name if u.assigned_unit_id in unit_map else None,
             }
             for u in users
         ],
-        "total": total, "page": page, "page_size": page_size,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
     })
 
 
 @router.post("/users")
-def create_user(body: UserCreate, current_user: User = Depends(require_admin), db: Session = Depends(get_db)):
-    if db.query(User).filter((User.username == body.username) | (User.email == body.email)).first():
+async def create_user(
+    body: UserCreate,
+    current_user: User = Depends(require_admin),
+):
+    existing = await User.find_one({"$or": [{"username": body.username}, {"email": body.email}]})
+    if existing:
         raise HTTPException(status_code=400, detail="Username or email already exists")
+
     try:
         role = UserRole(body.role)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid role")
 
-    user = User(username=body.username, email=body.email, password_hash=hash_password(body.password), role=role)
+    user = User(
+        username=body.username,
+        email=body.email,
+        password_hash=hash_password(body.password),
+        role=role,
+    )
+
     if body.assigned_unit_id:
-        unit = db.query(Unit).filter(Unit.id == body.assigned_unit_id).first()
+        try:
+            unit = await Unit.get(body.assigned_unit_id)
+        except Exception:
+            unit = None
         if not unit:
             raise HTTPException(status_code=400, detail="Unit not found")
-        user.assigned_unit_id = body.assigned_unit_id
-        # If commander, also set unit's commander_user_id
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    if role == UserRole.COMMANDER and body.assigned_unit_id:
-        unit = db.query(Unit).filter(Unit.id == body.assigned_unit_id).first()
-        if unit:
-            unit.commander_user_id = user.id
-            db.commit()
-    return APIResponse(data={"id": user.id}, message="User created")
+        user.assigned_unit_id = unit.id
+
+    await user.insert()
+
+    if role == UserRole.COMMANDER and body.assigned_unit_id and unit:
+        unit.commander_user_id = user.id
+        await unit.save()
+
+    return APIResponse(data={"id": str(user.id)}, message="User created")
 
 
 @router.put("/users/{user_id}")
-def update_user(user_id: int, body: UserUpdate, current_user: User = Depends(require_admin), db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.id == user_id).first()
+async def update_user(
+    user_id: str,
+    body: UserUpdate,
+    current_user: User = Depends(require_admin),
+):
+    try:
+        user = await User.get(user_id)
+    except Exception:
+        user = None
+
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+
     if body.email is not None:
         user.email = body.email
     if body.role is not None:
@@ -87,74 +119,98 @@ def update_user(user_id: int, body: UserUpdate, current_user: User = Depends(req
     if body.is_active is not None:
         user.is_active = body.is_active
     if body.assigned_unit_id is not None:
-        if body.assigned_unit_id == 0:
-            # 0 means unassign
+        if str(body.assigned_unit_id) == "0" or body.assigned_unit_id is None:
             user.assigned_unit_id = None
         else:
-            unit = db.query(Unit).filter(Unit.id == body.assigned_unit_id).first()
+            try:
+                unit = await Unit.get(body.assigned_unit_id)
+            except Exception:
+                unit = None
             if not unit:
                 raise HTTPException(status_code=400, detail="Unit not found")
-            user.assigned_unit_id = body.assigned_unit_id
+            user.assigned_unit_id = unit.id
             if user.role == UserRole.COMMANDER:
                 unit.commander_user_id = user.id
-    db.commit()
+                await unit.save()
+
+    await user.save()
     return APIResponse(message="User updated")
 
 
 # ---- Personnel ----
 
 @router.get("/personnel")
-def list_personnel(page: int = 1, page_size: int = 20, current_user: User = Depends(require_admin), db: Session = Depends(get_db)):
-    total = db.query(Personnel).count()
-    items = (
-        db.query(Personnel)
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-        .all()
-    )
+async def list_personnel(
+    page: int = 1,
+    page_size: int = 20,
+    current_user: User = Depends(require_admin),
+):
+    total = await Personnel.find().count()
+    items = await Personnel.find().skip((page - 1) * page_size).limit(page_size).to_list()
+    
+    units = await Unit.find().to_list()
+    unit_map = {u.id: u for u in units}
+
     return APIResponse(data={
         "items": [
             {
-                "id": p.id, "user_id": p.user_id, "service_id": p.service_id,
-                "first_name": p.first_name, "last_name": p.last_name,
-                "rank": p.rank, "unit_name": p.unit.name if p.unit else None,
+                "id": str(p.id),
+                "user_id": str(p.user_id),
+                "service_id": p.service_id,
+                "first_name": p.first_name,
+                "last_name": p.last_name,
+                "rank": p.rank,
+                "unit_name": unit_map[p.unit_id].name if p.unit_id in unit_map else None,
             }
             for p in items
         ],
-        "total": total, "page": page, "page_size": page_size,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
     })
 
 
 @router.post("/personnel")
-def create_personnel(body: PersonnelCreate, current_user: User = Depends(require_admin), db: Session = Depends(get_db)):
+async def create_personnel(
+    body: PersonnelCreate,
+    current_user: User = Depends(require_admin),
+):
     p = Personnel(**body.model_dump())
-    db.add(p)
-    db.commit()
-    db.refresh(p)
-    return APIResponse(data={"id": p.id}, message="Personnel created")
+    await p.insert()
+    return APIResponse(data={"id": str(p.id)}, message="Personnel created")
 
 
 # ---- Units ----
 
 @router.get("/units")
-def list_units(current_user: User = Depends(require_admin), db: Session = Depends(get_db)):
-    units = db.query(Unit).all()
+async def list_units(current_user: User = Depends(require_admin)):
+    units = await Unit.find().to_list()
+    all_personnel = await Personnel.find().to_list()
+
+    counts = {}
+    for p in all_personnel:
+        counts[p.unit_id] = counts.get(p.unit_id, 0) + 1
+
     return APIResponse(data=[
         {
-            "id": u.id, "name": u.name, "location": u.location, "type": u.type,
-            "personnel_count": len(u.personnel_list),
+            "id": str(u.id),
+            "name": u.name,
+            "location": u.location,
+            "type": u.type,
+            "personnel_count": counts.get(u.id, 0),
         }
         for u in units
     ])
 
 
 @router.post("/units")
-def create_unit(body: UnitCreate, current_user: User = Depends(require_admin), db: Session = Depends(get_db)):
+async def create_unit(
+    body: UnitCreate,
+    current_user: User = Depends(require_admin),
+):
     unit = Unit(**body.model_dump())
-    db.add(unit)
-    db.commit()
-    db.refresh(unit)
-    return APIResponse(data={"id": unit.id}, message="Unit created")
+    await unit.insert()
+    return APIResponse(data={"id": str(unit.id)}, message="Unit created")
 
 
 REQUIRED_COLUMNS = {
@@ -163,13 +219,13 @@ REQUIRED_COLUMNS = {
 }
 
 
-def _parse_rows(rows: list[dict], db: Session):
+async def _parse_rows(rows: list[dict]):
     """Parse a list of row dicts into OperationalData records."""
     imported, errors = 0, []
     affected_personnel = set()
     for i, row in enumerate(rows, start=2):
         sid = str(row.get("service_id", "")).strip()
-        personnel = db.query(Personnel).filter(Personnel.service_id == sid).first()
+        personnel = await Personnel.find_one(Personnel.service_id == sid)
         if not personnel:
             errors.append(f"Row {i}: service_id '{sid}' not found")
             continue
@@ -193,7 +249,7 @@ def _parse_rows(rows: list[dict], db: Session):
                 training_hours=float(row.get("training_hours", 0)) if row.get("training_hours") else None,
                 source=row.get("_source", "csv_import"),
             )
-            db.add(od)
+            await od.insert()
             affected_personnel.add(personnel.id)
             imported += 1
         except Exception as e:
@@ -205,7 +261,6 @@ def _parse_rows(rows: list[dict], db: Session):
 async def import_data(
     file: UploadFile = File(...),
     current_user: User = Depends(require_admin),
-    db: Session = Depends(get_db),
 ):
     """Import operational data from CSV or Excel (.xlsx) files."""
     filename = file.filename.lower()
@@ -245,7 +300,6 @@ async def import_data(
             row = {}
             for hi, header in enumerate(headers):
                 val = data_row[hi] if hi < len(data_row) else None
-                # Convert date objects to string
                 if isinstance(val, (datetime, date)):
                     val = val.isoformat()[:10]
                 row[header] = val
@@ -255,39 +309,36 @@ async def import_data(
     else:
         raise HTTPException(status_code=400, detail="Only CSV and Excel (.xlsx) files are accepted")
 
-    imported, errors, affected_personnel = _parse_rows(rows, db)
-    db.commit()
-    
-    # Trigger prediction update for affected personnel
+    imported, errors, affected_personnel = await _parse_rows(rows)
+
     from app.services.ml_service import predict_for_personnel
     for pid in affected_personnel:
         try:
-            predict_for_personnel(pid, db)
+            await predict_for_personnel(pid)
         except Exception:
             pass
 
     # Audit log
-    db.add(AuditLog(
+    audit = AuditLog(
         actor_user_id=current_user.id,
         action="import_operational_data",
         resource_type="operational_data",
-        resource_id=0,
+        resource_id=None,
         reason=f"Imported {imported} records from {file.filename}",
-    ))
-    db.commit()
+    )
+    await audit.insert()
 
     return APIResponse(data={"imported": imported, "errors": errors[:20]},
                        message=f"Imported {imported} records")
 
 
 @router.get("/import-status")
-def import_status(current_user: User = Depends(require_admin), db: Session = Depends(get_db)):
+async def import_status(current_user: User = Depends(require_admin)):
     """Get the status of the latest operational data import."""
-    latest_op = db.query(OperationalData).order_by(OperationalData.created_at.desc()).first()
+    latest_op = await OperationalData.find().sort(-OperationalData.created_at).first_or_none()
     return APIResponse(data={
         "latest_import_date": latest_op.created_at.isoformat() if latest_op else None
     })
-
 
 
 # ---- Manual Operational Data Entry ----
@@ -304,15 +355,13 @@ class ManualOperationalDataEntry(BaseModel):
     leave_gap_days: Optional[int] = None
 
 
-
 @router.post("/operational-data")
-def add_operational_data(
+async def add_operational_data(
     body: ManualOperationalDataEntry,
     current_user: User = Depends(require_admin),
-    db: Session = Depends(get_db),
 ):
     """Manually add a single operational data record for a personnel."""
-    personnel = db.query(Personnel).filter(Personnel.service_id == body.service_id).first()
+    personnel = await Personnel.find_one(Personnel.service_id == body.service_id)
     if not personnel:
         raise HTTPException(status_code=404, detail=f"Personnel with service_id '{body.service_id}' not found")
 
@@ -327,31 +376,27 @@ def add_operational_data(
             rest_hours=body.rest_hours,
             deployment_days=body.deployment_days,
             leave_gap_days=body.leave_gap_days,
-
             source="manual",
         )
-        db.add(od)
-        db.commit()
-        db.refresh(od)
-        
-        # Trigger prediction update
+        await od.insert()
+
         from app.services.ml_service import predict_for_personnel
-        predict_for_personnel(personnel.id, db)
+        await predict_for_personnel(personnel.id)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
     # Audit log
-    db.add(AuditLog(
+    audit = AuditLog(
         actor_user_id=current_user.id,
         action="manual_entry_operational_data",
         resource_type="operational_data",
         resource_id=od.id,
         reason=f"Manual entry for {body.service_id} ({body.period_start} to {body.period_end})",
-    ))
-    db.commit()
+    )
+    await audit.insert()
 
     return APIResponse(
-        data={"id": od.id, "personnel_name": f"{personnel.first_name} {personnel.last_name}"},
+        data={"id": str(od.id), "personnel_name": f"{personnel.first_name} {personnel.last_name}"},
         message="Operational data record created"
     )
 
@@ -359,18 +404,26 @@ def add_operational_data(
 # ---- Model Status ----
 
 @router.get("/model-status")
-def model_status(current_user: User = Depends(require_admin), db: Session = Depends(get_db)):
-    active = db.query(ModelVersion).filter(ModelVersion.status == "active").first()
-    all_versions = db.query(ModelVersion).order_by(ModelVersion.created_at.desc()).limit(10).all()
+async def model_status(current_user: User = Depends(require_admin)):
+    active = await ModelVersion.find_one(ModelVersion.status == "active")
+    all_versions = await ModelVersion.find().sort(-ModelVersion.created_at).limit(10).to_list()
 
     return APIResponse(data={
         "active": {
-            "id": active.id, "model_type": active.model_type, "version_tag": active.version_tag,
-            "metrics": active.metrics, "status": active.status.value,
+            "id": str(active.id),
+            "model_type": active.model_type,
+            "version_tag": active.version_tag,
+            "metrics": active.metrics,
+            "status": active.status.value if hasattr(active.status, "value") else str(active.status),
             "trained_at": active.trained_at.isoformat() if active.trained_at else None,
         } if active else None,
         "versions": [
-            {"id": v.id, "model_type": v.model_type, "version_tag": v.version_tag, "status": v.status.value}
+            {
+                "id": str(v.id),
+                "model_type": v.model_type,
+                "version_tag": v.version_tag,
+                "status": v.status.value if hasattr(v.status, "value") else str(v.status)
+            }
             for v in all_versions
         ],
     })
@@ -379,34 +432,32 @@ def model_status(current_user: User = Depends(require_admin), db: Session = Depe
 # ---- Audit Logs ----
 
 @router.get("/audit-logs")
-def get_audit_logs(
+async def get_audit_logs(
     page: int = 1,
     page_size: int = 20,
     current_user: User = Depends(require_admin),
-    db: Session = Depends(get_db),
 ):
-    total = db.query(AuditLog).count()
-    logs = (
-        db.query(AuditLog)
-        .order_by(AuditLog.created_at.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-        .all()
-    )
+    total = await AuditLog.find().count()
+    logs = await AuditLog.find().sort(-AuditLog.created_at).skip((page - 1) * page_size).limit(page_size).to_list()
+
+    users = await User.find().to_list()
+    user_map = {u.id: u for u in users}
 
     return APIResponse(data={
         "items": [
             {
-                "id": l.id,
-                "actor_user_id": l.actor_user_id,
-                "actor_username": l.actor.username if l.actor else None,
+                "id": str(l.id),
+                "actor_user_id": str(l.actor_user_id),
+                "actor_username": user_map[l.actor_user_id].username if l.actor_user_id in user_map else None,
                 "action": l.action,
                 "resource_type": l.resource_type,
-                "resource_id": l.resource_id,
+                "resource_id": str(l.resource_id) if l.resource_id else None,
                 "reason": l.reason,
                 "created_at": l.created_at.isoformat(),
             }
             for l in logs
         ],
-        "total": total, "page": page, "page_size": page_size,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
     })

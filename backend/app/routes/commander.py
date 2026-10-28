@@ -1,66 +1,68 @@
 """Commander routes — unit-level aggregates only, no individual data."""
 
+from collections import defaultdict
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
-from sqlalchemy import func
+from beanie.operators import In
 
-from app.database.connection import get_db
 from app.auth.rbac import require_commander
 from app.models.user import User
 from app.models.personnel import Personnel
 from app.models.unit import Unit
-from app.models.risk_prediction import RiskPrediction, RiskLevel
+from app.models.risk_prediction import RiskPrediction
+from app.models.operational_data import OperationalData
+from app.models.wellness_checkin import WellnessCheckin
 from app.schemas.common import APIResponse
 
 router = APIRouter()
 
 
-@router.get("/overview")
-def get_overview(current_user: User = Depends(require_commander), db: Session = Depends(get_db)):
-    """Aggregate risk distribution and trends for the commander's unit(s). No individual data."""
+async def _get_commander_personnel(current_user: User):
+    """Return (unit, personnel_list, personnel_ids) for the commander."""
+    unit = None
+    if current_user.assigned_unit_id:
+        unit = await Unit.find_one(Unit.id == current_user.assigned_unit_id)
+    if not unit:
+        unit = await Unit.find_one(Unit.commander_user_id == current_user.id)
 
-    # Find the commander's unit
-    unit = db.query(Unit).filter(Unit.commander_user_id == current_user.id).first()
-
-    # If no assigned unit, show all units (for demo)
     if unit:
-        personnel_ids = [p.id for p in db.query(Personnel.id).filter(Personnel.unit_id == unit.id).all()]
+        personnel_list = await Personnel.find(Personnel.unit_id == unit.id).to_list()
     else:
-        personnel_ids = [p.id for p in db.query(Personnel.id).all()]
+        personnel_list = await Personnel.find().to_list()
+
+    personnel_ids = [p.id for p in personnel_list]
+    return unit, personnel_list, personnel_ids
+
+
+@router.get("/overview")
+async def get_overview(current_user: User = Depends(require_commander)):
+    """Aggregate risk distribution and trends for the commander's unit(s). No individual data."""
+    unit, personnel_list, personnel_ids = await _get_commander_personnel(current_user)
 
     if not personnel_ids:
         return APIResponse(data={
             "unit_name": unit.name if unit else "All Units",
             "total_personnel": 0,
+            "assessed_personnel": 0,
             "risk_distribution": {"low": 0, "moderate": 0, "elevated": 0, "high": 0},
             "avg_risk_score": 0,
         })
 
-    # Get latest prediction per personnel
-    from sqlalchemy import and_
-    latest_pred = (
-        db.query(
-            RiskPrediction.personnel_id,
-            func.max(RiskPrediction.id).label("max_id")
-        )
-        .filter(RiskPrediction.personnel_id.in_(personnel_ids))
-        .group_by(RiskPrediction.personnel_id)
-        .subquery()
-    )
+    all_preds = await RiskPrediction.find(
+        In(RiskPrediction.personnel_id, personnel_ids)
+    ).sort(-RiskPrediction.created_at).to_list()
 
-    predictions = (
-        db.query(RiskPrediction)
-        .join(latest_pred, and_(
-            RiskPrediction.id == latest_pred.c.max_id,
-            RiskPrediction.personnel_id == latest_pred.c.personnel_id,
-        ))
-        .all()
-    )
+    latest_by_person = {}
+    for pred in all_preds:
+        if pred.personnel_id not in latest_by_person:
+            latest_by_person[pred.personnel_id] = pred
+
+    predictions = list(latest_by_person.values())
 
     dist = {"low": 0, "moderate": 0, "elevated": 0, "high": 0}
     total_score = 0
     for p in predictions:
-        dist[p.risk_level.value] += 1
+        val = p.risk_level.value if hasattr(p.risk_level, "value") else str(p.risk_level)
+        dist[val] = dist.get(val, 0) + 1
         total_score += p.risk_score
 
     avg = round(total_score / len(predictions), 1) if predictions else 0
@@ -74,59 +76,28 @@ def get_overview(current_user: User = Depends(require_commander), db: Session = 
     })
 
 
-# ---------- Helper: resolve commander's unit + personnel ids ----------
-def _get_commander_personnel(current_user: User, db: Session):
-    """Return (unit, personnel_ids) for the commander."""
-    # Primary: use assigned_unit_id from user record
-    if current_user.assigned_unit_id:
-        unit = db.query(Unit).filter(Unit.id == current_user.assigned_unit_id).first()
-    else:
-        # Fallback: old method via Unit.commander_user_id
-        unit = db.query(Unit).filter(Unit.commander_user_id == current_user.id).first()
-
-    if unit:
-        personnel_ids = [p.id for p in db.query(Personnel.id).filter(Personnel.unit_id == unit.id).all()]
-    else:
-        personnel_ids = [p.id for p in db.query(Personnel.id).all()]
-    return unit, personnel_ids
-
-
 @router.get("/roster")
-def get_roster(
-    current_user: User = Depends(require_commander),
-    db: Session = Depends(get_db),
-):
+async def get_roster(current_user: User = Depends(require_commander)):
     """Unit personnel roster with latest operational metrics — no individual risk/wellness data."""
-    from app.models.operational_data import OperationalData
-
-    unit, personnel_ids = _get_commander_personnel(current_user, db)
+    unit, personnel_list, personnel_ids = await _get_commander_personnel(current_user)
     if not personnel_ids:
         return APIResponse(data={"unit_name": unit.name if unit else "All Units", "items": []})
 
-    # Get latest operational data per personnel
-    latest_op = (
-        db.query(
-            OperationalData.personnel_id,
-            func.max(OperationalData.id).label("max_id")
-        )
-        .filter(OperationalData.personnel_id.in_(personnel_ids))
-        .group_by(OperationalData.personnel_id)
-        .subquery()
-    )
+    all_ops = await OperationalData.find(
+        In(OperationalData.personnel_id, personnel_ids)
+    ).sort(-OperationalData.period_end).to_list()
 
-    from sqlalchemy import and_
-    op_rows = (
-        db.query(OperationalData, Personnel)
-        .join(latest_op, and_(
-            OperationalData.id == latest_op.c.max_id,
-            OperationalData.personnel_id == latest_op.c.personnel_id,
-        ))
-        .join(Personnel, Personnel.id == OperationalData.personnel_id)
-        .all()
-    )
+    latest_ops = {}
+    for od in all_ops:
+        if od.personnel_id not in latest_ops:
+            latest_ops[od.personnel_id] = od
 
+    person_map = {p.id: p for p in personnel_list}
     items = []
-    for od, p in op_rows:
+    for pid, od in latest_ops.items():
+        p = person_map.get(pid)
+        if not p:
+            continue
         items.append({
             "service_id": p.service_id,
             "first_name": p.first_name,
@@ -151,27 +122,16 @@ def get_roster(
 
 
 @router.get("/trends")
-def get_trends(
-    current_user: User = Depends(require_commander),
-    db: Session = Depends(get_db),
-):
+async def get_trends(current_user: User = Depends(require_commander)):
     """Monthly aggregate risk trends for the commander's unit — no individual data exposed."""
-    from sqlalchemy import extract, and_
-
-    unit, personnel_ids = _get_commander_personnel(current_user, db)
+    unit, personnel_list, personnel_ids = await _get_commander_personnel(current_user)
     if not personnel_ids:
         return APIResponse(data={"unit_name": unit.name if unit else "All Units", "months": []})
 
-    # Get all predictions for the unit's personnel, grouped by year-month
-    predictions = (
-        db.query(RiskPrediction)
-        .filter(RiskPrediction.personnel_id.in_(personnel_ids))
-        .order_by(RiskPrediction.created_at)
-        .all()
-    )
+    predictions = await RiskPrediction.find(
+        In(RiskPrediction.personnel_id, personnel_ids)
+    ).sort(+RiskPrediction.created_at).to_list()
 
-    # Group by month
-    from collections import defaultdict
     monthly = defaultdict(list)
     for pred in predictions:
         key = pred.created_at.strftime("%Y-%m")
@@ -183,7 +143,8 @@ def get_trends(
         scores = [p.risk_score for p in preds]
         dist = {"low": 0, "moderate": 0, "elevated": 0, "high": 0}
         for p in preds:
-            dist[p.risk_level.value] += 1
+            val = p.risk_level.value if hasattr(p.risk_level, "value") else str(p.risk_level)
+            dist[val] = dist.get(val, 0) + 1
 
         months.append({
             "month": month_key,
@@ -201,83 +162,49 @@ def get_trends(
 
 
 @router.get("/insights")
-def get_insights(
-    current_user: User = Depends(require_commander),
-    db: Session = Depends(get_db),
-):
+async def get_insights(current_user: User = Depends(require_commander)):
     """Anonymized, actionable unit-level insights derived from operational and aggregate data."""
-    from app.models.operational_data import OperationalData
-    from app.models.wellness_checkin import WellnessCheckin
-    from sqlalchemy import and_
-
-    unit, personnel_ids = _get_commander_personnel(current_user, db)
+    unit, personnel_list, personnel_ids = await _get_commander_personnel(current_user)
     if not personnel_ids:
         return APIResponse(data={"unit_name": unit.name if unit else "All Units", "insights": []})
 
     total = len(personnel_ids)
 
     # Get latest operational data per personnel
-    latest_op = (
-        db.query(
-            OperationalData.personnel_id,
-            func.max(OperationalData.id).label("max_id")
-        )
-        .filter(OperationalData.personnel_id.in_(personnel_ids))
-        .group_by(OperationalData.personnel_id)
-        .subquery()
-    )
-    op_rows = (
-        db.query(OperationalData)
-        .join(latest_op, and_(
-            OperationalData.id == latest_op.c.max_id,
-            OperationalData.personnel_id == latest_op.c.personnel_id,
-        ))
-        .all()
-    )
+    all_ops = await OperationalData.find(
+        In(OperationalData.personnel_id, personnel_ids)
+    ).sort(-OperationalData.period_end).to_list()
+    latest_op_map = {}
+    for o in all_ops:
+        if o.personnel_id not in latest_op_map:
+            latest_op_map[o.personnel_id] = o
+    op_rows = list(latest_op_map.values())
 
     # Get latest risk predictions
-    latest_pred = (
-        db.query(
-            RiskPrediction.personnel_id,
-            func.max(RiskPrediction.id).label("max_id")
-        )
-        .filter(RiskPrediction.personnel_id.in_(personnel_ids))
-        .group_by(RiskPrediction.personnel_id)
-        .subquery()
-    )
-    pred_rows = (
-        db.query(RiskPrediction)
-        .join(latest_pred, and_(
-            RiskPrediction.id == latest_pred.c.max_id,
-            RiskPrediction.personnel_id == latest_pred.c.personnel_id,
-        ))
-        .all()
-    )
+    all_preds = await RiskPrediction.find(
+        In(RiskPrediction.personnel_id, personnel_ids)
+    ).sort(-RiskPrediction.created_at).to_list()
+    latest_pred_map = {}
+    for p in all_preds:
+        if p.personnel_id not in latest_pred_map:
+            latest_pred_map[p.personnel_id] = p
+    pred_rows = list(latest_pred_map.values())
 
     # Get latest wellness checkins
-    latest_wc = (
-        db.query(
-            WellnessCheckin.personnel_id,
-            func.max(WellnessCheckin.id).label("max_id")
-        )
-        .filter(WellnessCheckin.personnel_id.in_(personnel_ids))
-        .group_by(WellnessCheckin.personnel_id)
-        .subquery()
-    )
-    wc_rows = (
-        db.query(WellnessCheckin)
-        .join(latest_wc, and_(
-            WellnessCheckin.id == latest_wc.c.max_id,
-            WellnessCheckin.personnel_id == latest_wc.c.personnel_id,
-        ))
-        .all()
-    )
+    all_wcs = await WellnessCheckin.find(
+        In(WellnessCheckin.personnel_id, personnel_ids)
+    ).sort(-WellnessCheckin.submitted_at).to_list()
+    latest_wc_map = {}
+    for w in all_wcs:
+        if w.personnel_id not in latest_wc_map:
+            latest_wc_map[w.personnel_id] = w
+    wc_rows = list(latest_wc_map.values())
 
     insights = []
 
     # --- Operational insights ---
     if op_rows:
-        duty_hours = [o.duty_hours for o in op_rows if o.duty_hours]
+        duty_hours = [o.duty_hours for o in op_rows if o.duty_hours is not None]
         night_shifts = [o.night_shifts for o in op_rows if o.night_shifts is not None]
         leave_gaps = [o.leave_gap_days for o in op_rows if o.leave_gap_days is not None]
         rest_hours = [o.rest_hours for o in op_rows if o.rest_hours is not None]
@@ -330,8 +257,8 @@ def get_insights(
 
     # --- Risk insights ---
     if pred_rows:
-        increasing = sum(1 for p in pred_rows if p.trend.value == "increasing")
-        high_elevated = sum(1 for p in pred_rows if p.risk_level.value in ("high", "elevated"))
+        increasing = sum(1 for p in pred_rows if (p.trend.value if hasattr(p.trend, "value") else str(p.trend)) == "increasing")
+        high_elevated = sum(1 for p in pred_rows if (p.risk_level.value if hasattr(p.risk_level, "value") else str(p.risk_level)) in ("high", "elevated"))
         if increasing > 0:
             pct = round(increasing / total * 100)
             insights.append({

@@ -1,40 +1,47 @@
 """
-SAATHI Backend — Database connection and session management.
+SAATHI Backend — MongoDB connection and initialization using Motor + Beanie.
 """
 
-from sqlalchemy import create_engine, event
-from sqlalchemy.orm import sessionmaker, Session
-from typing import Generator
+from motor.motor_asyncio import AsyncIOMotorClient
+from beanie import init_beanie
 
 from app.config import get_settings
 
 settings = get_settings()
 
-connect_args = {}
-if settings.DATABASE_URL.startswith("sqlite"):
-    connect_args["check_same_thread"] = False
-
-engine = create_engine(
-    settings.DATABASE_URL,
-    connect_args=connect_args,
-    echo=False,
-)
-
-# Enable foreign keys for SQLite
-if settings.DATABASE_URL.startswith("sqlite"):
-    @event.listens_for(engine, "connect")
-    def set_sqlite_pragma(dbapi_connection, connection_record):
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
-
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+client = AsyncIOMotorClient(settings.MONGODB_URL)
+db = client[settings.MONGODB_DB_NAME]
 
 
-def get_db() -> Generator[Session, None, None]:
-    """FastAPI dependency — yields a DB session and closes after request."""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+async def init_db():
+    """Initialize Beanie with all document models. Called once at startup."""
+    from app.models.user import User
+    from app.models.unit import Unit
+    from app.models.personnel import Personnel
+    from app.models.operational_data import OperationalData
+    from app.models.wellness_checkin import WellnessCheckin
+    from app.models.risk_prediction import RiskPrediction
+    from app.models.recommendation import Recommendation
+    from app.models.intervention import Intervention
+    from app.models.consent import Consent
+    from app.models.support_request import SupportRequest
+    from app.models.audit_log import AuditLog
+    from app.models.model_version import ModelVersion
+
+    await init_beanie(
+        database=db,
+        document_models=[
+            User,
+            Unit,
+            Personnel,
+            OperationalData,
+            WellnessCheckin,
+            RiskPrediction,
+            Recommendation,
+            Intervention,
+            Consent,
+            SupportRequest,
+            AuditLog,
+            ModelVersion,
+        ],
+    )

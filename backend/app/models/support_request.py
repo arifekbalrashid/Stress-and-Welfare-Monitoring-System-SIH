@@ -4,10 +4,9 @@ Support request — personnel-initiated requests for welfare support.
 
 import enum
 from datetime import datetime
-from sqlalchemy import Integer, String, Text, Enum, DateTime, ForeignKey
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from app.database.base import Base
+from typing import Optional, Any
+from beanie import Document, Indexed
+from pydantic import Field
 
 
 class SupportCategory(str, enum.Enum):
@@ -27,18 +26,14 @@ class SupportStatus(str, enum.Enum):
     CLOSED = "closed"
 
 
-class SupportRequest(Base):
-    __tablename__ = "support_requests"
+class SupportRequest(Document):
+    personnel_id: Indexed(Any)
+    category: SupportCategory
+    description: str
+    status: SupportStatus = SupportStatus.SUBMITTED
+    assigned_to: Optional[Any] = None
+    created_at: Indexed(datetime, index_type=None) = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    personnel_id: Mapped[int] = mapped_column(Integer, ForeignKey("personnel.id"), nullable=False, index=True)
-    category: Mapped[SupportCategory] = mapped_column(Enum(SupportCategory), nullable=False)
-    description: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[SupportStatus] = mapped_column(Enum(SupportStatus), default=SupportStatus.SUBMITTED)
-    assigned_to: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    # Relationships
-    personnel: Mapped["Personnel"] = relationship(back_populates="support_requests")
-    assigned_officer: Mapped["User"] = relationship(foreign_keys=[assigned_to])
+    class Settings:
+        name = "support_requests"

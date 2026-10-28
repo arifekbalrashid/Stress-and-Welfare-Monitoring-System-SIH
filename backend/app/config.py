@@ -9,8 +9,9 @@ from functools import lru_cache
 
 
 class Settings(BaseSettings):
-    # Database — defaults to SQLite for local dev
-    DATABASE_URL: str = "sqlite:///" + os.path.join(os.path.dirname(os.path.dirname(__file__)), "saathi.db")
+    # MongoDB connection string
+    MONGODB_URL: str = "mongodb://localhost:27017"
+    MONGODB_DB_NAME: str = "saathi"
 
     # JWT
     JWT_SECRET_KEY: str = "change-this-to-a-long-random-string"

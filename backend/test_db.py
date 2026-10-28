@@ -1,22 +1,30 @@
-from app.database.connection import SessionLocal
+import asyncio
+from app.database.connection import init_db
 from app.models.personnel import Personnel
 from app.models.user import User
 from app.models.risk_prediction import RiskPrediction
 from app.models.recommendation import Recommendation
 
-db = SessionLocal()
+async def main():
+    await init_db()
+    u = await User.find_one(User.username == "p1025")
+    if not u:
+        print("User p1025 not found")
+        return
+    p = await Personnel.find_one(Personnel.user_id == u.id)
+    if not p:
+        print("Personnel for p1025 not found")
+        return
 
-u = db.query(User).filter(User.username == 'p1025').first()
-p = db.query(Personnel).filter(Personnel.user_id == u.id).first()
+    pred = await RiskPrediction.find(RiskPrediction.personnel_id == p.id).sort(-RiskPrediction.created_at).first_or_none()
 
-pred = db.query(RiskPrediction).filter(RiskPrediction.personnel_id == p.id).order_by(RiskPrediction.created_at.desc()).first()
+    print(f"Latest prediction ID for p1025: {pred.id if pred else 'None'}")
+    if pred:
+        print(f"Risk Level: {pred.risk_level.value}")
+        recs = await Recommendation.find(Recommendation.risk_prediction_id == pred.id).to_list()
+        print(f"Recommendations found: {len(recs)}")
+        for r in recs:
+            print(f"- {r.recommendation_text}")
 
-print(f"Latest prediction ID for p1025: {pred.id if pred else 'None'}")
-if pred:
-    print(f"Risk Level: {pred.risk_level.value}")
-    recs = db.query(Recommendation).filter(Recommendation.risk_prediction_id == pred.id).all()
-    print(f"Recommendations found: {len(recs)}")
-    for r in recs:
-        print(f"- {r.recommendation_text}")
-
-db.close()
+if __name__ == "__main__":
+    asyncio.run(main())

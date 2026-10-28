@@ -2,13 +2,23 @@
 SAATHI Backend — FastAPI Application Entry Point
 """
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
+from app.database.connection import init_db
 from app.routes import auth, personnel, wellness, risk, consent, welfare, commander, admin, support, chat
 
 settings = get_settings()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize MongoDB / Beanie on startup."""
+    await init_db()
+    yield
+
 
 app = FastAPI(
     title="SAATHI API",
@@ -16,6 +26,7 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
 # CORS

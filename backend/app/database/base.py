@@ -1,10 +1,4 @@
 """
-SAATHI Backend — SQLAlchemy declarative base.
-All ORM models inherit from this Base.
+SAATHI Backend — Beanie document base (no separate base needed, but kept for compatibility).
+All document models inherit from beanie.Document directly.
 """
-
-from sqlalchemy.orm import DeclarativeBase
-
-
-class Base(DeclarativeBase):
-    pass

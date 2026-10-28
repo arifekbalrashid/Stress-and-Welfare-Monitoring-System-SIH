@@ -4,10 +4,9 @@ Consent — personnel's data sharing consent records.
 
 import enum
 from datetime import datetime
-from sqlalchemy import Integer, String, Enum, DateTime, ForeignKey
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from app.database.base import Base
+from typing import Optional, Any
+from beanie import Document, Indexed
+from pydantic import Field
 
 
 class ConsentDataType(str, enum.Enum):
@@ -21,15 +20,12 @@ class ConsentStatus(str, enum.Enum):
     WITHDRAWN = "withdrawn"
 
 
-class Consent(Base):
-    __tablename__ = "consents"
+class Consent(Document):
+    personnel_id: Indexed(Any)
+    data_type: ConsentDataType
+    status: ConsentStatus
+    granted_at: Optional[datetime] = None
+    withdrawn_at: Optional[datetime] = None
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    personnel_id: Mapped[int] = mapped_column(Integer, ForeignKey("personnel.id"), nullable=False, index=True)
-    data_type: Mapped[ConsentDataType] = mapped_column(Enum(ConsentDataType), nullable=False)
-    status: Mapped[ConsentStatus] = mapped_column(Enum(ConsentStatus), nullable=False)
-    granted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-
-    # Relationships
-    personnel: Mapped["Personnel"] = relationship(back_populates="consents")
+    class Settings:
+        name = "consents"

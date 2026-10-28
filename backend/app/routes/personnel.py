@@ -1,9 +1,9 @@
 """Personnel routes — own profile, risk, dashboard data, support requests."""
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.orm import Session
+from collections import defaultdict
+from datetime import datetime
 
-from app.database.connection import get_db
 from app.auth.rbac import require_personnel
 from app.models.user import User
 from app.models.personnel import Personnel
@@ -12,28 +12,28 @@ from app.models.recommendation import Recommendation
 from app.models.operational_data import OperationalData
 from app.models.wellness_checkin import WellnessCheckin
 from app.models.audit_log import AuditLog
-from app.models.risk_prediction import RiskLevel, RiskTrend
 from app.schemas.common import APIResponse
-from pydantic import BaseModel
-from datetime import datetime, date
-
+from app.models.unit import Unit
 
 
 router = APIRouter()
 
 
 @router.get("/me")
-def get_me(current_user: User = Depends(require_personnel), db: Session = Depends(get_db)):
-    p = db.query(Personnel).filter(Personnel.user_id == current_user.id).first()
+async def get_me(current_user: User = Depends(require_personnel)):
+    p = await Personnel.find_one(Personnel.user_id == current_user.id)
     if not p:
         raise HTTPException(status_code=404, detail="Personnel record not found")
+
+    unit = await Unit.find_one(Unit.id == p.unit_id) if p.unit_id else None
+
     return APIResponse(data={
         "id": p.id,
         "service_id": p.service_id,
         "first_name": p.first_name,
         "last_name": p.last_name,
         "rank": p.rank,
-        "unit_name": p.unit.name if p.unit else None,
+        "unit_name": unit.name if unit else None,
         "date_of_joining": str(p.date_of_joining) if p.date_of_joining else None,
         "email": current_user.email,
         "username": current_user.username,
@@ -41,21 +41,21 @@ def get_me(current_user: User = Depends(require_personnel), db: Session = Depend
 
 
 @router.get("/me/risk")
-def get_my_risk(request: Request, current_user: User = Depends(require_personnel), db: Session = Depends(get_db)):
-    p = db.query(Personnel).filter(Personnel.user_id == current_user.id).first()
+async def get_my_risk(request: Request, current_user: User = Depends(require_personnel)):
+    p = await Personnel.find_one(Personnel.user_id == current_user.id)
     if not p:
         raise HTTPException(status_code=404, detail="Personnel record not found")
 
-    prediction = (
-        db.query(RiskPrediction)
-        .filter(RiskPrediction.personnel_id == p.id)
-        .order_by(RiskPrediction.created_at.desc())
-        .first()
-    )
+    prediction = await RiskPrediction.find(
+        RiskPrediction.personnel_id == p.id
+    ).sort(-RiskPrediction.created_at).first_or_none()
+
     if not prediction:
         return APIResponse(data=None, message="No risk assessment available yet")
 
-    recs = db.query(Recommendation).filter(Recommendation.risk_prediction_id == prediction.id).all()
+    recs = await Recommendation.find(
+        Recommendation.risk_prediction_id == prediction.id
+    ).to_list()
 
     recs_list = [
         {"category": r.category, "text": r.recommendation_text, "priority": r.priority}
@@ -68,7 +68,7 @@ def get_my_risk(request: Request, current_user: User = Depends(require_personnel
         from app.services.translation import translate_strings
         texts = [r["text"] for r in recs_list] + [r["category"] for r in recs_list] + [f["label"] for f in shap_factors.get("factors", [])]
         translated = translate_strings(texts, lang)
-        
+
         if len(translated) == len(texts):
             num_recs = len(recs_list)
             for i, r in enumerate(recs_list):
@@ -78,7 +78,7 @@ def get_my_risk(request: Request, current_user: User = Depends(require_personnel
                 f["label"] = translated[(num_recs * 2) + i]
 
     return APIResponse(data={
-        "id": prediction.id,
+        "id": str(prediction.id),
         "risk_score": prediction.risk_score,
         "risk_level": prediction.risk_level.value,
         "trend": prediction.trend.value,
@@ -91,20 +91,17 @@ def get_my_risk(request: Request, current_user: User = Depends(require_personnel
 
 
 @router.get("/me/dashboard")
-def get_dashboard(request: Request, current_user: User = Depends(require_personnel), db: Session = Depends(get_db)):
+async def get_dashboard(request: Request, current_user: User = Depends(require_personnel)):
     """Aggregated dashboard data: risk history, recent changes, latest check-in status."""
-    p = db.query(Personnel).filter(Personnel.user_id == current_user.id).first()
+    p = await Personnel.find_one(Personnel.user_id == current_user.id)
     if not p:
         raise HTTPException(status_code=404, detail="Personnel record not found")
 
     # Risk history for trend chart (monthly average, up to last 8 months)
-    from collections import defaultdict
-    predictions = (
-        db.query(RiskPrediction)
-        .filter(RiskPrediction.personnel_id == p.id)
-        .order_by(RiskPrediction.created_at.asc())
-        .all()
-    )
+    predictions = await RiskPrediction.find(
+        RiskPrediction.personnel_id == p.id
+    ).sort(+RiskPrediction.created_at).to_list()
+
     monthly = defaultdict(list)
     for pred in predictions:
         key = pred.created_at.strftime("%Y-%m")
@@ -113,25 +110,22 @@ def get_dashboard(request: Request, current_user: User = Depends(require_personn
     risk_history = []
     for month_key in sorted(monthly.keys()):
         preds = monthly[month_key]
-        avg_score = sum(p.risk_score for p in preds) / len(preds)
+        avg_score = sum(pr.risk_score for pr in preds) / len(preds)
         if avg_score < 25: level = "low"
         elif avg_score < 50: level = "moderate"
         elif avg_score < 75: level = "elevated"
         else: level = "high"
-        
-        last_date = max(p.created_at for p in preds).isoformat()
+
+        last_date = max(pr.created_at for pr in preds).isoformat()
         risk_history.append({"score": avg_score, "level": level, "date": last_date})
-    
+
     risk_history = risk_history[-8:]
 
     # Recent changes — compare last 2 operational data periods
-    ops = (
-        db.query(OperationalData)
-        .filter(OperationalData.personnel_id == p.id)
-        .order_by(OperationalData.period_end.desc())
-        .limit(2)
-        .all()
-    )
+    ops = await OperationalData.find(
+        OperationalData.personnel_id == p.id
+    ).sort(-OperationalData.period_end).limit(2).to_list()
+
     recent_changes = []
     if len(ops) >= 2:
         curr, prev = ops[0], ops[1]
@@ -157,7 +151,7 @@ def get_dashboard(request: Request, current_user: User = Depends(require_personn
             _change("Consecutive duty", curr.consecutive_duty_days, prev.consecutive_duty_days, "days"),
         ]
         recent_changes = [c for c in changes if c is not None][:4]
-        
+
     lang = request.headers.get("Accept-Language", "en").split(",")[0]
     if not lang.startswith("en") and recent_changes:
         from app.services.translation import translate_strings
@@ -168,12 +162,10 @@ def get_dashboard(request: Request, current_user: User = Depends(require_personn
                 c["label"] = translated[i]
 
     # Latest check-in
-    latest_checkin = (
-        db.query(WellnessCheckin)
-        .filter(WellnessCheckin.personnel_id == p.id)
-        .order_by(WellnessCheckin.submitted_at.desc())
-        .first()
-    )
+    latest_checkin = await WellnessCheckin.find(
+        WellnessCheckin.personnel_id == p.id
+    ).sort(-WellnessCheckin.submitted_at).first_or_none()
+
     checkin_status = None
     if latest_checkin:
         checkin_status = {
@@ -181,13 +173,11 @@ def get_dashboard(request: Request, current_user: User = Depends(require_personn
         }
 
     # Access log for this personnel (limited, user-facing)
-    access_logs = (
-        db.query(AuditLog)
-        .filter(AuditLog.resource_type == "personnel", AuditLog.resource_id == p.id)
-        .order_by(AuditLog.created_at.desc())
-        .limit(5)
-        .all()
-    )
+    access_logs = await AuditLog.find(
+        AuditLog.resource_type == "personnel",
+        AuditLog.resource_id == p.id
+    ).sort(-AuditLog.created_at).limit(5).to_list()
+
     access_history = [
         {
             "action": log.action,
@@ -203,5 +193,3 @@ def get_dashboard(request: Request, current_user: User = Depends(require_personn
         "checkin_status": checkin_status,
         "access_history": access_history,
     })
-
-

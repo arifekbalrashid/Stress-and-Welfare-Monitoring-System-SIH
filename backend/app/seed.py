@@ -1,25 +1,42 @@
 """
-Seed script — creates demo users, personnel, units, and 6 months of time-series data.
+Seed script — creates demo users, personnel, units, and 6 months of time-series data in MongoDB.
 Run: python -m app.seed
 """
 
+import asyncio
 import random
 from datetime import datetime, date, timedelta
-from app.database.connection import engine, SessionLocal
-from app.database.base import Base
-from app.models import *
-from app.models.personnel import ReviewStatus
+from app.database.connection import init_db
+from app.models.user import User, UserRole
+from app.models.unit import Unit
+from app.models.personnel import Personnel, ReviewStatus
+from app.models.operational_data import OperationalData
+from app.models.wellness_checkin import WellnessCheckin
+from app.models.risk_prediction import RiskPrediction, RiskLevel, RiskTrend
+from app.models.recommendation import Recommendation
+from app.models.intervention import Intervention, InterventionType, InterventionStatus
+from app.models.consent import Consent, ConsentDataType, ConsentStatus
+from app.models.support_request import SupportRequest, SupportCategory, SupportStatus
+from app.models.audit_log import AuditLog
+from app.models.model_version import ModelVersion, ModelStatus
 from app.auth.password import hash_password
 
 random.seed(42)
 
 
-def seed():
-    print("Clearing database...")
-    Base.metadata.create_all(bind=engine)
-    db = SessionLocal()
+async def seed():
+    print("Initializing MongoDB connection...")
+    await init_db()
 
-    print("Seeding database...")
+    print("Clearing MongoDB collections...")
+    for model in [
+        User, Unit, Personnel, OperationalData, WellnessCheckin,
+        RiskPrediction, Recommendation, Intervention, Consent,
+        SupportRequest, AuditLog, ModelVersion
+    ]:
+        await model.delete_all()
+
+    print("Seeding MongoDB...")
 
     # ---- Units ----
     units = [
@@ -27,16 +44,20 @@ def seed():
         Unit(name="7th Company", location="Imphal", type="company"),
         Unit(name="Central Station", location="Delhi", type="station"),
     ]
-    db.add_all(units)
-    db.flush()
+    for u in units:
+        await u.insert()
 
     # ---- System users ----
     admin_user = User(username="admin", email="admin@saathi.gov.in", password_hash=hash_password("admin1234"), role=UserRole.ADMIN)
     wo_user = User(username="wo_sharma", email="wo.sharma@saathi.gov.in", password_hash=hash_password("demo1234"), role=UserRole.WELFARE_OFFICER, assigned_unit_id=units[0].id)
     cmd_user = User(username="cmd_singh", email="cmd.singh@saathi.gov.in", password_hash=hash_password("demo1234"), role=UserRole.COMMANDER, assigned_unit_id=units[0].id)
-    db.add_all([admin_user, wo_user, cmd_user])
-    db.flush()
+
+    await admin_user.insert()
+    await wo_user.insert()
+    await cmd_user.insert()
+
     units[0].commander_user_id = cmd_user.id
+    await units[0].save()
 
     # ---- Personnel ----
     personnel_data = [
@@ -55,26 +76,32 @@ def seed():
     personnel_records = []
     for sid, fname, lname, rank, uid, doj in personnel_data:
         u = User(username=sid, email=f"{sid}@saathi.gov.in", password_hash=hash_password("demo1234"), role=UserRole.PERSONNEL)
-        db.add(u)
-        db.flush()
-        p = Personnel(user_id=u.id, unit_id=uid, service_id=sid, first_name=fname, last_name=lname, rank=rank, date_of_joining=date.fromisoformat(doj))
-        db.add(p)
-        db.flush()
+        await u.insert()
+        p = Personnel(
+            user_id=u.id,
+            unit_id=uid,
+            service_id=sid,
+            first_name=fname,
+            last_name=lname,
+            rank=rank,
+            date_of_joining=date.fromisoformat(doj)
+        )
+        await p.insert()
         personnel_records.append(p)
 
     # ---- Model version ----
     mv = ModelVersion(
-        model_type="xgboost", version_tag="v1.0", feature_set_version="v1",
+        model_type="xgboost",
+        version_tag="v1.0",
+        feature_set_version="v1",
         metrics={"precision": 0.84, "recall": 0.79, "f1": 0.81, "auc": 0.88},
-        status=ModelStatus.ACTIVE, artifact_path="ml/artifacts/xgboost_v1.pkl",
+        status=ModelStatus.ACTIVE,
+        artifact_path="ml/artifacts/xgboost_v1.pkl",
         trained_at=datetime(2026, 3, 1),
     )
-    db.add(mv)
-    db.flush()
+    await mv.insert()
 
     # ---- Risk profiles per personnel (defines trajectory over 6 months) ----
-    # Each profile: (base_score, trend_direction, volatility, start_month)
-    # trend_direction: positive = worsening, negative = improving
     profiles = {
         "p1024": (45, +5.0, 4, 3),    # 6 months (Mar-Aug)
         "p1025": (30, -2.0, 3, 5),    # 4 months (May-Aug)
@@ -88,9 +115,9 @@ def seed():
         "p1033": (38, -1.5, 3, 8),    # 1 month
     }
 
-    # ---- Generate 6 months of data (March–August 2026) ----
+    # Generate 6 months of data (March–August 2026)
     months = []
-    for m in range(3, 9):  # March to August
+    for m in range(3, 9):
         month_start = date(2026, m, 1)
         if m == 8:
             month_end = date(2026, 8, 31)
@@ -119,16 +146,12 @@ def seed():
         base_score, trend_dir, volatility, start_month = profiles[sid]
 
         prev_score = None
-        
         personnel_months = [(m_start, m_end) for m_start, m_end in months if m_start.month >= start_month]
 
         for mi, (m_start, m_end) in enumerate(personnel_months):
-            # ---- Operational data ----
-            # Correlated to risk profile
             score_at_month = base_score + trend_dir * mi + random.uniform(-volatility, volatility)
             score_at_month = max(5, min(95, score_at_month))
 
-            # Higher risk = worse operational metrics
             risk_factor = score_at_month / 100
             duty_hours = round(40 + risk_factor * 25 + random.uniform(-3, 3), 1)
             night_shifts = int(2 + risk_factor * 8 + random.uniform(-1, 1))
@@ -149,12 +172,10 @@ def seed():
                 training_hours=round(random.uniform(0, 8), 1),
                 source="csv_import",
             )
-            db.add(od)
+            await od.insert()
 
-            # ---- Wellness check-in (some months only, ~70% participation) ----
             has_wellness = random.random() < 0.7
             if has_wellness:
-                # Lower risk = better wellness
                 inv_factor = 1 - risk_factor
                 wc = WellnessCheckin(
                     personnel_id=p.id,
@@ -165,9 +186,8 @@ def seed():
                     recovery_score=max(1, min(5, round(1 + inv_factor * 4 + random.uniform(-0.5, 0.5)))),
                     submitted_at=datetime(m_start.year, m_start.month, random.randint(10, 25), random.randint(9, 18))
                 )
-                db.add(wc)
+                await wc.insert()
 
-            # ---- Risk prediction ----
             risk_score = round(score_at_month, 1)
             if risk_score <= 30:
                 risk_level = RiskLevel.LOW
@@ -188,7 +208,6 @@ def seed():
                 trend = RiskTrend.STABLE
             prev_score = risk_score
 
-            # SHAP factors — pick top 4 by correlation with risk
             feature_impacts = {
                 "duty_hours": max(0, (duty_hours - 45) / 100),
                 "night_shifts": max(0, (night_shifts - 3) / 30),
@@ -214,12 +233,10 @@ def seed():
                 confidence=round(0.65 + random.uniform(0, 0.25), 2),
                 model_version_id=mv.id,
                 has_wellness_data=has_wellness,
+                created_at=datetime(m_start.year, m_start.month, 28, 12, 0),
             )
-            pred.created_at = datetime(m_start.year, m_start.month, 28, 12, 0)
-            db.add(pred)
-            db.flush()
+            await pred.insert()
 
-            # ---- Recommendations (only for elevated/high) ----
             if risk_level in (RiskLevel.ELEVATED, RiskLevel.HIGH):
                 rec_cats = []
                 if leave_gap > 40:
@@ -232,10 +249,15 @@ def seed():
                     rec_cats.append(("deployment", random.choice(rec_templates["deployment"])))
 
                 for pri, (cat, text) in enumerate(rec_cats[:3], 1):
-                    db.add(Recommendation(risk_prediction_id=pred.id, category=cat, recommendation_text=text, priority=pri))
+                    rec = Recommendation(
+                        risk_prediction_id=pred.id,
+                        category=cat,
+                        recommendation_text=text,
+                        priority=pri
+                    )
+                    await rec.insert()
 
-            # Set mock review_status for the current month
-            if m == 8: # Only set for the last month to make the dashboard look active
+            if m_start.month == 8:
                 if risk_level == RiskLevel.HIGH:
                     p.review_status = ReviewStatus.UNDER_REVIEW
                 elif risk_level == RiskLevel.ELEVATED:
@@ -244,18 +266,31 @@ def seed():
                     p.review_status = ReviewStatus.NEEDS_REVIEW
                 else:
                     p.review_status = ReviewStatus.CLOSED
+                await p.save()
 
-    # ---- Consent for all personnel (wellness + risk sharing) ----
+    # ---- Consent for all personnel ----
     for p in personnel_records:
-        db.add(Consent(personnel_id=p.id, data_type=ConsentDataType.WELLNESS_CHECKIN, status=ConsentStatus.GRANTED, granted_at=datetime(2026, 3, 1)))
+        await Consent(
+            personnel_id=p.id,
+            data_type=ConsentDataType.WELLNESS_CHECKIN,
+            status=ConsentStatus.GRANTED,
+            granted_at=datetime(2026, 3, 1)
+        ).insert()
+
         if random.random() < 0.7:
-            db.add(Consent(personnel_id=p.id, data_type=ConsentDataType.RISK_SHARING, status=ConsentStatus.GRANTED, granted_at=datetime(2026, 3, 1)))
+            await Consent(
+                personnel_id=p.id,
+                data_type=ConsentDataType.RISK_SHARING,
+                status=ConsentStatus.GRANTED,
+                granted_at=datetime(2026, 3, 1)
+            ).insert()
 
-    # ---- Sample intervention (welfare officer acted on p1024 in July) ----
-    p1024_pred = db.query(RiskPrediction).filter(
+    # ---- Sample intervention ----
+    p1024_preds = await RiskPrediction.find(
         RiskPrediction.personnel_id == personnel_records[0].id
-    ).order_by(RiskPrediction.created_at.desc()).offset(1).first()
+    ).sort(-RiskPrediction.created_at).to_list()
 
+    p1024_pred = p1024_preds[1] if len(p1024_preds) > 1 else (p1024_preds[0] if p1024_preds else None)
     if p1024_pred:
         iv = Intervention(
             personnel_id=personnel_records[0].id,
@@ -265,13 +300,11 @@ def seed():
             notes="Recommended 10 days leave. Personnel has not taken leave in 63+ days.",
             status=InterventionStatus.COMPLETED,
             follow_up_date=date(2026, 8, 15),
+            created_at=datetime(2026, 7, 29, 14, 30),
         )
-        iv.created_at = datetime(2026, 7, 29, 14, 30)
-        db.add(iv)
+        await iv.insert()
 
     # ---- Sample Support Requests ----
-    from app.models.support_request import SupportRequest, SupportCategory, SupportStatus
-
     support_data = [
         (personnel_records[0], SupportCategory.LEAVE, "I haven't been able to take leave for over 2 months. My family needs me at home. Requesting leave approval assistance.", SupportStatus.SUBMITTED),
         (personnel_records[2], SupportCategory.WORKLOAD, "Duty hours have been very high this month. Feeling exhausted. Requesting workload redistribution.", SupportStatus.SUBMITTED),
@@ -288,14 +321,12 @@ def seed():
             description=desc,
             status=status,
             assigned_to=wo_user.id if status != SupportStatus.SUBMITTED else None,
+            created_at=datetime(2026, 8, random.randint(5, 28), random.randint(8, 18), random.randint(0, 59)),
         )
-        sr.created_at = datetime(2026, 8, random.randint(5, 28), random.randint(8, 18), random.randint(0, 59))
-        db.add(sr)
+        await sr.insert()
 
-    db.commit()
-    db.close()
-    print("Done. Seeded 13 users + 10 personnel × 6 months of time-series data.")
+    print("Done. Seeded 13 users + 10 personnel × 6 months of time-series data into MongoDB.")
 
 
 if __name__ == "__main__":
-    seed()
+    asyncio.run(seed())

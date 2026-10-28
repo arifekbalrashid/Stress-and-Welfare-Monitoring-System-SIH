@@ -1,10 +1,10 @@
 """
-Models package — imports all ORM models so Alembic can discover them.
+Models package — imports all Beanie document models.
 """
 
 from app.models.user import User, UserRole
 from app.models.unit import Unit
-from app.models.personnel import Personnel
+from app.models.personnel import Personnel, ReviewStatus
 from app.models.operational_data import OperationalData
 from app.models.wellness_checkin import WellnessCheckin
 from app.models.risk_prediction import RiskPrediction, RiskLevel, RiskTrend
@@ -18,7 +18,7 @@ from app.models.model_version import ModelVersion, ModelStatus
 __all__ = [
     "User", "UserRole",
     "Unit",
-    "Personnel",
+    "Personnel", "ReviewStatus",
     "OperationalData",
     "WellnessCheckin",
     "RiskPrediction", "RiskLevel", "RiskTrend",
