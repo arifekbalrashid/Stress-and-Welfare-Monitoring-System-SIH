@@ -4,8 +4,8 @@ Consent — personnel's data sharing consent records.
 
 import enum
 from datetime import datetime
-from typing import Optional, Any
-from beanie import Document, Indexed
+from typing import Optional
+from beanie import Document, Indexed, PydanticObjectId
 from pydantic import Field
 
 
@@ -21,7 +21,7 @@ class ConsentStatus(str, enum.Enum):
 
 
 class Consent(Document):
-    personnel_id: Indexed(Any)
+    personnel_id: Indexed(PydanticObjectId)
     data_type: ConsentDataType
     status: ConsentStatus
     granted_at: Optional[datetime] = None

@@ -4,8 +4,8 @@ Intervention — welfare officer's logged actions for a personnel case.
 
 import enum
 from datetime import datetime, date
-from typing import Optional, Any
-from beanie import Document, Indexed
+from typing import Optional
+from beanie import Document, Indexed, PydanticObjectId
 from pydantic import Field
 
 
@@ -25,9 +25,9 @@ class InterventionStatus(str, enum.Enum):
 
 
 class Intervention(Document):
-    personnel_id: Indexed(Any)
-    welfare_officer_id: Any
-    risk_prediction_id: Optional[Any] = None
+    personnel_id: Indexed(PydanticObjectId)
+    welfare_officer_id: PydanticObjectId
+    risk_prediction_id: Optional[PydanticObjectId] = None
     intervention_type: InterventionType
     notes: Optional[str] = None
     status: InterventionStatus = InterventionStatus.PLANNED

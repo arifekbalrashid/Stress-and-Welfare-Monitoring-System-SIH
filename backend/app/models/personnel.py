@@ -5,8 +5,8 @@ This is the bridge between identity (user) and pseudonymous ML data.
 
 import enum
 from datetime import datetime, date
-from typing import Optional, Any
-from beanie import Document, Indexed
+from typing import Optional
+from beanie import Document, Indexed, PydanticObjectId
 from pydantic import Field
 
 
@@ -20,8 +20,8 @@ class ReviewStatus(str, enum.Enum):
 
 
 class Personnel(Document):
-    user_id: Indexed(Any, unique=True)
-    unit_id: Indexed(Any)
+    user_id: Indexed(PydanticObjectId, unique=True)
+    unit_id: Indexed(PydanticObjectId)
     service_id: Indexed(str, unique=True)  # force-issued ID
     first_name: str
     last_name: str

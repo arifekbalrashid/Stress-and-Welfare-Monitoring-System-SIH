@@ -3,13 +3,13 @@ Wellness check-in — voluntary weekly self-reported data (5 questions, 1–5 sc
 """
 
 from datetime import datetime
-from typing import Optional, Any
-from beanie import Document, Indexed
+from typing import Optional
+from beanie import Document, Indexed, PydanticObjectId
 from pydantic import Field
 
 
 class WellnessCheckin(Document):
-    personnel_id: Indexed(Any)
+    personnel_id: Indexed(PydanticObjectId)
     sleep_quality: int       # 1–5
     energy_level: int        # 1–5
     workload_score: int      # 1–5
@@ -25,7 +25,8 @@ class WellnessCheckin(Document):
     physical_exhaustion: Optional[int] = None    # 1-5
     social_connectedness: Optional[int] = None   # 1-5
 
-    submitted_at: Indexed(datetime, index_type=None) = Field(default_factory=datetime.utcnow)
+    submitted_at: datetime = Field(default_factory=datetime.utcnow)
 
     class Settings:
         name = "wellness_checkins"
+        indexes = ["submitted_at"]

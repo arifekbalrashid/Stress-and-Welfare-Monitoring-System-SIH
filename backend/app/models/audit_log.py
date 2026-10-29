@@ -3,19 +3,20 @@ Audit log — records sensitive data access (who viewed what, when, why).
 """
 
 from datetime import datetime
-from typing import Optional, Any
-from beanie import Document, Indexed
+from typing import Optional
+from beanie import Document, Indexed, PydanticObjectId
 from pydantic import Field
 
 
 class AuditLog(Document):
-    actor_user_id: Indexed(Any)
+    actor_user_id: Indexed(PydanticObjectId)
     action: str  # view_case, view_risk, export_data, etc.
     resource_type: str  # risk_prediction, personnel, etc.
-    resource_id: Optional[Any] = None
+    resource_id: Optional[str] = None
     ip_address: Optional[str] = None
     reason: Optional[str] = None
-    created_at: Indexed(datetime, index_type=None) = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
     class Settings:
         name = "audit_logs"
+        indexes = ["created_at"]

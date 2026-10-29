@@ -5,6 +5,14 @@ SAATHI Backend — MongoDB connection and initialization using Motor + Beanie.
 from motor.motor_asyncio import AsyncIOMotorClient
 from beanie import init_beanie
 
+# Compatibility patch: Motor doesn't directly expose append_metadata on AsyncIOMotorClient,
+# which Beanie 2.2+ attempts to call. Delegate to underlying pymongo MongoClient.
+if not hasattr(AsyncIOMotorClient, "append_metadata"):
+    def _append_metadata(self, *args, **kwargs):
+        if hasattr(self.delegate, "append_metadata"):
+            return self.delegate.append_metadata(*args, **kwargs)
+    AsyncIOMotorClient.append_metadata = _append_metadata
+
 from app.config import get_settings
 
 settings = get_settings()

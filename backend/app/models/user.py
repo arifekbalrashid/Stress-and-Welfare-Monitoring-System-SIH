@@ -5,8 +5,8 @@ Identity data is kept here and in personnel; ML-facing data references personnel
 
 import enum
 from datetime import datetime
-from typing import Optional, Any
-from beanie import Document, Indexed
+from typing import Optional
+from beanie import Document, Indexed, PydanticObjectId
 from pydantic import Field
 
 
@@ -23,7 +23,7 @@ class User(Document):
     password_hash: str
     role: UserRole
     is_active: bool = True
-    assigned_unit_id: Optional[Any] = None
+    assigned_unit_id: Optional[PydanticObjectId] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

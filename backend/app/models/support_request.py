@@ -4,8 +4,8 @@ Support request — personnel-initiated requests for welfare support.
 
 import enum
 from datetime import datetime
-from typing import Optional, Any
-from beanie import Document, Indexed
+from typing import Optional
+from beanie import Document, Indexed, PydanticObjectId
 from pydantic import Field
 
 
@@ -27,13 +27,14 @@ class SupportStatus(str, enum.Enum):
 
 
 class SupportRequest(Document):
-    personnel_id: Indexed(Any)
+    personnel_id: Indexed(PydanticObjectId)
     category: SupportCategory
     description: str
     status: SupportStatus = SupportStatus.SUBMITTED
-    assigned_to: Optional[Any] = None
-    created_at: Indexed(datetime, index_type=None) = Field(default_factory=datetime.utcnow)
+    assigned_to: Optional[PydanticObjectId] = None
+    created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
     class Settings:
         name = "support_requests"
+        indexes = ["created_at"]

@@ -3,13 +3,13 @@ Operational data — admin-imported duty metrics (consolidated table).
 """
 
 from datetime import datetime, date
-from typing import Optional, Any
-from beanie import Document, Indexed
+from typing import Optional
+from beanie import Document, Indexed, PydanticObjectId
 from pydantic import Field
 
 
 class OperationalData(Document):
-    personnel_id: Indexed(Any)
+    personnel_id: Indexed(PydanticObjectId)
     period_start: date
     period_end: date
     duty_hours: Optional[float] = None
