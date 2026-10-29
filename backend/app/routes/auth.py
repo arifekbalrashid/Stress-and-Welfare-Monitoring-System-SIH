@@ -13,9 +13,17 @@ router = APIRouter()
 
 @router.post("/login")
 async def login(body: LoginRequest, response: Response):
-    user = await User.find_one(User.username == body.username, User.is_active == True)
+    user = await User.find_one(User.username == body.username)
     if not user or not verify_password(body.password, user.password_hash):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+        )
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is inactive",
+        )
 
     access_token = create_access_token(data={"sub": str(user.id), "role": user.role.value})
     refresh_token = create_refresh_token(data={"sub": str(user.id)})
@@ -24,8 +32,8 @@ async def login(body: LoginRequest, response: Response):
         key="refresh_token",
         value=refresh_token,
         httponly=True,
+        max_age=7 * 24 * 3600,
         samesite="lax",
-        max_age=7 * 24 * 60 * 60,
     )
 
     return APIResponse(data={
@@ -36,7 +44,7 @@ async def login(body: LoginRequest, response: Response):
             "username": user.username,
             "email": user.email,
             "role": user.role.value,
-        }
+        },
     })
 
 
@@ -50,9 +58,13 @@ async def refresh(request: Request, response: Response):
     if not payload or payload.get("type") != "refresh":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
 
-    user = await User.find_one(User.id == int(payload["sub"]), User.is_active == True)
-    if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    try:
+        user = await User.get(payload["sub"])
+    except Exception:
+        user = None
+
+    if not user or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
 
     access_token = create_access_token(data={"sub": str(user.id), "role": user.role.value})
 
